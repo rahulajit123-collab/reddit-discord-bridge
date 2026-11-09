@@ -1,10 +1,10 @@
 
+
 name: Reddit to Discord
 
 on:
   schedule:
     - cron: "*/5 * * * *"
-
   workflow_dispatch:
 
 permissions:
@@ -31,10 +31,10 @@ jobs:
         run: pip install requests
 
       - name: Check Reddit and send posts
-  env:
-    DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-    REDDIT_RSS_URL: ${{ secrets.REDDIT_RSS_URL }}
-  run: python reddit_to_discord.py
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          REDDIT_RSS_URL: ${{ secrets.REDDIT_RSS_URL }}
+        run: python reddit_to_discord.py
 
       - name: Save post history
         run: |
