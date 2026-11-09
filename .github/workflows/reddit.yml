@@ -1,0 +1,46 @@
+
+name: Reddit to Discord
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reddit-discord-feed
+  cancel-in-progress: false
+
+jobs:
+  send-posts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Check Reddit and send posts
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python reddit_to_discord.py
+
+      - name: Save post history
+        run: |
+          if [[ -n "$(git status --porcelain -- seen_posts.json)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add seen_posts.json
+            git commit -m "Update Reddit post history"
+            git push
+          fi
