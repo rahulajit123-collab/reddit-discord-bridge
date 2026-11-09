@@ -56,6 +56,7 @@ def send_to_discord(post):
         break
 
 
+
 def main():
     response = requests.get(
         SUBREDDIT_URL,
@@ -67,12 +68,18 @@ def main():
     posts = response.json()["data"]["children"]
     posts = [item["data"] for item in posts]
 
-    if not STATE_FILE.exists():
+    seen = (
+        json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        if STATE_FILE.exists()
+        else []
+    )
+
+    # First run: save existing posts without sending them.
+    if not seen:
         save_seen([post["id"] for post in posts])
         print("Initial setup complete. Existing posts saved.")
         return
 
-    seen = json.loads(STATE_FILE.read_text(encoding="utf-8"))
     seen_set = set(seen)
 
     new_posts = [
@@ -82,11 +89,9 @@ def main():
 
     for post in new_posts:
         send_to_discord(post)
-
         seen.append(post["id"])
         seen_set.add(post["id"])
         save_seen(seen)
-
         print(f"Sent: {post['title']}")
 
     if not new_posts:
