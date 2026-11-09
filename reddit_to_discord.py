@@ -1,21 +1,78 @@
 
-import json
+
 import os
+import json
 import time
-from pathlib import Path
-
 import requests
+import xml.etree.ElementTree as ET
 
-SUBREDDIT_URL = (
-    "https://www.reddit.com/r/ClashOfClansLeaks/new.json?limit=100"
-)
+from pathlib import Path
+from html import unescape
 
+FEED_URL = os.environ["REDDIT_RSS_URL"]
 WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
+
 STATE_FILE = Path("seen_posts.json")
 
 HEADERS = {
-    "User-Agent": "RedditDiscordBridge/1.0 (personal subreddit feed)"
+    "User-Agent": "HalfBaked-RedditDiscordBridge/1.0"
 }
+
+
+def local_name(tag):
+    return tag.split("}")[-1].lower()
+
+
+def get_child_text(element, names):
+    for child in element:
+        if local_name(child.tag) in names:
+            if child.text:
+                return child.text.strip()
+
+            # Atom links usually store the URL in href.
+            href = child.attrib.get("href")
+            if href:
+                return href
+
+    return None
+
+
+def fetch_posts():
+    response = requests.get(
+        FEED_URL,
+        headers=HEADERS,
+        timeout=30
+    )
+    response.raise_for_status()
+
+    root = ET.fromstring(response.content)
+    posts = []
+
+    for element in root.iter():
+        if local_name(element.tag) not in ("item", "entry"):
+            continue
+
+        title = get_child_text(element, {"title"})
+        link = get_child_text(element, {"link"})
+        post_id = get_child_text(element, {"guid", "id"})
+        author = get_child_text(
+            element,
+            {"creator", "author", "name"}
+        )
+
+        if not title or not link:
+            continue
+
+        post_id = post_id or link
+
+        posts.append({
+            "id": post_id,
+            "title": unescape(title),
+            "link": link,
+            "author": author or "Unknown"
+        })
+
+    return posts
 
 
 def save_seen(ids):
@@ -26,24 +83,23 @@ def save_seen(ids):
 
 
 def send_to_discord(post):
-    title = post.get("title", "Untitled Reddit post")
-    author = post.get("author", "Unknown")
-    permalink = "https://www.reddit.com" + post["permalink"]
-
     embed = {
-        "title": title[:256],
-        "url": permalink,
-        "description": f"Posted by u/{author}",
+        "title": post["title"][:256],
+        "url": post["link"],
+        "description": f"Posted by {post['author']}",
         "color": 0x8A63D2,
         "footer": {
-            "text": "r/ClashOfClansLeaks"
+            "text": "Clash of Clans Leaks"
         }
     }
 
     while True:
         response = requests.post(
             WEBHOOK_URL,
-            json={"embeds": [embed]},
+            json={
+                "embeds": [embed],
+                "allowed_mentions": {"parse": []}
+            },
             timeout=30
         )
 
@@ -56,17 +112,8 @@ def send_to_discord(post):
         break
 
 
-
 def main():
-    response = requests.get(
-        SUBREDDIT_URL,
-        headers=HEADERS,
-        timeout=30
-    )
-    response.raise_for_status()
-
-    posts = response.json()["data"]["children"]
-    posts = [item["data"] for item in posts]
+    posts = fetch_posts()
 
     seen = (
         json.loads(STATE_FILE.read_text(encoding="utf-8"))
@@ -74,10 +121,10 @@ def main():
         else []
     )
 
-    # First run: save existing posts without sending them.
+    # First run: remember existing posts without sending them.
     if not seen:
         save_seen([post["id"] for post in posts])
-        print("Initial setup complete. Existing posts saved.")
+        print(f"Initial setup complete. Saved {len(posts)} existing posts.")
         return
 
     seen_set = set(seen)
@@ -89,16 +136,22 @@ def main():
 
     for post in new_posts:
         send_to_discord(post)
+
         seen.append(post["id"])
         seen_set.add(post["id"])
         save_seen(seen)
-        print(f"Sent: {post['title']}")
+
+        print(f"Sent to Discord: {post['title']}")
 
     if not new_posts:
-        print("No new Reddit posts.")
+        print("No new posts found.")
 
     save_seen(seen)
 
 
 if __name__ == "__main__":
     main()
+
+
+
+
