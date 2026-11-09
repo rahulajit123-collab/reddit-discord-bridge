@@ -30,14 +30,6 @@ jobs:
       - name: Install dependencies
         run: pip install requests
         
-      - name: Test Discord webhook
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          curl -H "Content-Type: application/json" \
-          -d '{"content":"🧪 Test successful! Half Baked Reddit leak notifications are connected."}' \
-          "$DISCORD_WEBHOOK_URL"
-          
       - name: Check Reddit and send posts
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
